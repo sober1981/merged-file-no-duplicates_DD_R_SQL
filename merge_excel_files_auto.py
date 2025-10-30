@@ -1081,7 +1081,39 @@ def merge_all_files(FILES):
     print("="*80)
 
     print(f"\nWriting to: {OUTPUT_FILE}")
-    df_merged.to_excel(OUTPUT_FILE, index=False, sheet_name='Merged Data', engine='openpyxl')
+
+    # Use ExcelWriter with openpyxl for better compatibility with Spotfire
+    from openpyxl import Workbook
+    from openpyxl.utils.dataframe import dataframe_to_rows
+
+    # Create workbook and write data
+    with pd.ExcelWriter(OUTPUT_FILE, engine='openpyxl', mode='w') as writer:
+        # Write DataFrame to Excel
+        df_merged.to_excel(writer, index=False, sheet_name='Merged Data')
+
+        # Get the workbook and worksheet
+        workbook = writer.book
+        worksheet = writer.sheets['Merged Data']
+
+        # Set properties for better compatibility
+        workbook.properties.creator = "Scout Downhole - Drilling Optimization"
+        workbook.properties.title = "Merged Scorecard Data"
+        workbook.properties.description = "Merged drilling scorecard data from multiple sources"
+
+        # Auto-adjust column widths for readability
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+
+    print(f"  Excel file created with openpyxl engine and optimized formatting")
 
     print("\n" + "="*80)
     print("MERGE COMPLETE!")
