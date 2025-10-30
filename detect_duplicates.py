@@ -422,7 +422,40 @@ def main():
 
     if is_dup_col:
         ws.delete_cols(is_dup_col)
-        wb.save(output_file)
+
+    # Format DATE_IN and DATE_OUT as date-only (no time)
+    print("Formatting DATE_IN and DATE_OUT columns (date only, no time)...")
+    header_row = [cell.value for cell in ws[1]]
+    date_in_col = None
+    date_out_col = None
+
+    for idx, header in enumerate(header_row, start=1):
+        if header == 'DATE_IN':
+            date_in_col = idx
+        elif header == 'DATE_OUT':
+            date_out_col = idx
+
+    # Format DATE_IN column (date only)
+    if date_in_col:
+        for row_idx in range(2, ws.max_row + 1):
+            cell = ws.cell(row=row_idx, column=date_in_col)
+            if cell.value is not None:
+                if hasattr(cell.value, 'date'):
+                    cell.value = cell.value.date()
+                cell.number_format = 'YYYY-MM-DD'
+
+    # Format DATE_OUT column (date only)
+    if date_out_col:
+        for row_idx in range(2, ws.max_row + 1):
+            cell = ws.cell(row=row_idx, column=date_out_col)
+            if cell.value is not None:
+                if hasattr(cell.value, 'date'):
+                    cell.value = cell.value.date()
+                cell.number_format = 'YYYY-MM-DD'
+
+    print("  Applied date-only formatting to DATE_IN and DATE_OUT")
+
+    wb.save(output_file)
 
     # Generate summary report
     generate_summary_report(original_count, after_removal_count, duplicate_count, output_file)
