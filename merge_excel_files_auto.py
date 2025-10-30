@@ -242,6 +242,28 @@ def read_cam_run_tracker(file_path, mapping):
     df = pd.read_excel(file_path, sheet_name='General')
     print(f"  Rows: {len(df)}, Columns: {len(df.columns)}")
 
+    # BEFORE renaming: Populate MY column with fallback logic
+    # Primary: Column AP ("Yield >45 Deg")
+    # Fallback: Column AO ("Yield 0-45 Deg") if AP is blank
+    # Must do this BEFORE column renaming to access original column names
+    if 'Yield >45 Deg' in df.columns and 'Yield 0-45 Deg' in df.columns:
+        def get_my_value(row_orig):
+            # Try primary source first (AP - "Yield >45 Deg")
+            yield_high = row_orig.get('Yield >45 Deg')
+            if pd.notna(yield_high) and str(yield_high).strip() != '':
+                return yield_high
+
+            # Fallback to secondary source (AO - "Yield 0-45 Deg")
+            yield_low = row_orig.get('Yield 0-45 Deg')
+            if pd.notna(yield_low) and str(yield_low).strip() != '':
+                return yield_low
+
+            return None
+
+        # Create MY column in original df before renaming
+        df['MY'] = df.apply(get_my_value, axis=1)
+        print(f"  Populated MY column from 'Yield >45 Deg' (primary) and 'Yield 0-45 Deg' (fallback)")
+
     # Rename columns according to mapping
     df_renamed = df.rename(columns=mapping)
     df_renamed['SOURCE'] = 'CAM_Run_Tracker'
@@ -268,27 +290,6 @@ def read_cam_run_tracker(file_path, mapping):
             df_renamed['BEND'] = df['Bend']
         if 'BEND_HSG' not in df_renamed.columns or df_renamed['BEND_HSG'].isna().all():
             df_renamed['BEND_HSG'] = df['Bend']
-
-    # Special handling: Populate MY column with fallback logic
-    # Primary: Column AP ("Yield >45 Deg")
-    # Fallback: Column AO ("Yield 0-45 Deg") if AP is blank
-    if 'Yield >45 Deg' in df.columns and 'Yield 0-45 Deg' in df.columns:
-        def get_my_value(row_orig):
-            # Try primary source first (AP - "Yield >45 Deg")
-            yield_high = row_orig.get('Yield >45 Deg')
-            if pd.notna(yield_high) and str(yield_high).strip() != '':
-                return yield_high
-
-            # Fallback to secondary source (AO - "Yield 0-45 Deg")
-            yield_low = row_orig.get('Yield 0-45 Deg')
-            if pd.notna(yield_low) and str(yield_low).strip() != '':
-                return yield_low
-
-            return None
-
-        # Apply the logic to populate MY column
-        df_renamed['MY'] = df.apply(get_my_value, axis=1)
-        print(f"  Populated MY column from 'Yield >45 Deg' (primary) and 'Yield 0-45 Deg' (fallback)")
 
     return df_renamed
 
