@@ -1119,15 +1119,26 @@ def merge_all_files(FILES):
                 end_date_col = idx
 
         # Format DATE_IN and DATE_OUT as DATE ONLY (no time)
+        # Also convert datetime values to date-only values
         if date_in_col:
-            for row in range(2, worksheet.max_row + 1):
-                cell = worksheet.cell(row=row, column=date_in_col)
-                cell.number_format = 'YYYY-MM-DD'  # Date format only
+            for row_idx in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row_idx, column=date_in_col)
+                if cell.value is not None:
+                    # If it's a datetime, convert to date only
+                    if hasattr(cell.value, 'date'):
+                        cell.value = cell.value.date()
+                    # Set the number format to display as date only
+                    cell.number_format = 'YYYY-MM-DD'
 
         if date_out_col:
-            for row in range(2, worksheet.max_row + 1):
-                cell = worksheet.cell(row=row, column=date_out_col)
-                cell.number_format = 'YYYY-MM-DD'  # Date format only
+            for row_idx in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row_idx, column=date_out_col)
+                if cell.value is not None:
+                    # If it's a datetime, convert to date only
+                    if hasattr(cell.value, 'date'):
+                        cell.value = cell.value.date()
+                    # Set the number format to display as date only
+                    cell.number_format = 'YYYY-MM-DD'
 
         # Format START_DATE and END_DATE as DATE + TIME
         if start_date_col:
