@@ -1081,7 +1081,7 @@ def merge_all_files(FILES):
     print("="*80)
 
     print(f"\nWriting to: {OUTPUT_FILE}")
-    df_merged.to_excel(OUTPUT_FILE, index=False, sheet_name='Merged Data')
+    df_merged.to_excel(OUTPUT_FILE, index=False, sheet_name='Merged Data', engine='openpyxl')
 
     print("\n" + "="*80)
     print("MERGE COMPLETE!")
