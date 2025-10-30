@@ -1085,6 +1085,7 @@ def merge_all_files(FILES):
     # Use ExcelWriter with openpyxl for better compatibility with Spotfire
     from openpyxl import Workbook
     from openpyxl.utils.dataframe import dataframe_to_rows
+    from openpyxl.styles import numbers
 
     # Create workbook and write data
     with pd.ExcelWriter(OUTPUT_FILE, engine='openpyxl', mode='w') as writer:
@@ -1099,6 +1100,47 @@ def merge_all_files(FILES):
         workbook.properties.creator = "Scout Downhole - Drilling Optimization"
         workbook.properties.title = "Merged Scorecard Data"
         workbook.properties.description = "Merged drilling scorecard data from multiple sources"
+
+        # Find DATE_IN and DATE_OUT column indices (K and L = columns 11 and 12)
+        header_row = [cell.value for cell in worksheet[1]]
+        date_in_col = None
+        date_out_col = None
+        start_date_col = None
+        end_date_col = None
+
+        for idx, header in enumerate(header_row, start=1):
+            if header == 'DATE_IN':
+                date_in_col = idx
+            elif header == 'DATE_OUT':
+                date_out_col = idx
+            elif header == 'START_DATE':
+                start_date_col = idx
+            elif header == 'END_DATE':
+                end_date_col = idx
+
+        # Format DATE_IN and DATE_OUT as DATE ONLY (no time)
+        if date_in_col:
+            for row in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row, column=date_in_col)
+                cell.number_format = 'YYYY-MM-DD'  # Date format only
+
+        if date_out_col:
+            for row in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row, column=date_out_col)
+                cell.number_format = 'YYYY-MM-DD'  # Date format only
+
+        # Format START_DATE and END_DATE as DATE + TIME
+        if start_date_col:
+            for row in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row, column=start_date_col)
+                cell.number_format = 'YYYY-MM-DD HH:MM:SS'  # Date and time format
+
+        if end_date_col:
+            for row in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row, column=end_date_col)
+                cell.number_format = 'YYYY-MM-DD HH:MM:SS'  # Date and time format
+
+        print(f"  Applied date formatting: DATE_IN/OUT=date only, START/END_DATE=date+time")
 
         # Auto-adjust column widths for readability
         for column in worksheet.columns:
