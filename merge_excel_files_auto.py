@@ -7,9 +7,15 @@ It searches for files starting with:
 - POG CAM
 - POG MM
 
+Data Corrections Applied:
+1. JOB_TYPE: Motor KPI=Directional, CAM=Rental, POG blanks=Rental, MWD→Rental
+2. DDS: Motor KPI=SDT, POG=Other, CAM=Keep as is
+3. BHA: Blanks set to 1 (all sources)
+4. RUN_NUM: Blanks set to 1 (all sources)
+
 Author: Created for drilling optimization project
-Date: 2025-10-28
-Version: 2.0 (Auto-detect)
+Date: 2025-10-29
+Version: 2.2 (Auto-detect + Data Corrections)
 """
 
 import pandas as pd
@@ -573,7 +579,7 @@ def populate_lobe_stage_and_dds(df):
             if source == 'Motor_KPI':
                 return 'SDT'
 
-            # CAM Run Tracker: Extract first complete word (company name)
+            # CAM Run Tracker: Keep as is (extract first complete word/company name)
             elif source == 'CAM_Run_Tracker':
                 if pd.notna(row['DDS']):
                     dds_value = str(row['DDS']).strip()
@@ -584,20 +590,14 @@ def populate_lobe_stage_and_dds(df):
                         return match.group(1)
                 return row['DDS']
 
-            # POG files: Based on JOB_TYPE column
+            # POG files: Always "Other"
             elif source in ['POG_CAM_Usage', 'POG_MM_Usage']:
-                if 'JOB_TYPE' in row.index and pd.notna(row['JOB_TYPE']):
-                    job_type = str(row['JOB_TYPE']).strip().upper()
-                    if 'DIRECTIONAL' in job_type:
-                        return 'SDT'
-                    elif 'RENTAL' in job_type:
-                        return 'Other'
-                return None
+                return 'Other'
 
             return row['DDS'] if pd.notna(row['DDS']) else None
 
         df['DDS'] = df.apply(populate_dds, axis=1)
-        print(f"  Populated DDS column based on source-specific logic")
+        print(f"  Populated DDS column (Motor KPI=SDT, POG=Other, CAM=Keep as is)")
 
     return df
 
@@ -713,9 +713,13 @@ def populate_motor_type2(df):
 
 def populate_and_clean_job_type(df):
     """
-    Populate JOB_TYPE for Motor KPI and clean values for all sources:
+    Populate and standardize JOB_TYPE for all sources:
     - Motor KPI: All should be "Directional"
-    - All sources: Replace "Directional- MWD and Motor" with "Directional"
+    - CAM Run Tracker: All should be "Rental"
+    - POG files: If blank, set to "Rental"
+    - Replace "MWD" with "Rental"
+    - Replace "Directional- MWD and Motor" with "Directional"
+    - Only two allowed values: "Directional" or "Rental"
     """
     if 'JOB_TYPE' in df.columns:
         def clean_job_type(row):
@@ -726,18 +730,38 @@ def populate_and_clean_job_type(df):
             if source == 'Motor_KPI':
                 return 'Directional'
 
-            # For other sources, clean the existing value
+            # CAM Run Tracker: All are Rental
+            if source == 'CAM_Run_Tracker':
+                return 'Rental'
+
+            # For POG files and other sources, clean the existing value
             if pd.notna(job_type):
                 job_type_str = str(job_type).strip()
+
+                # Replace "MWD" with "Rental"
+                if job_type_str.upper() == 'MWD':
+                    return 'Rental'
+
                 # Replace "Directional- MWD and Motor" with "Directional"
                 if 'Directional- MWD and Motor' in job_type_str:
                     return 'Directional'
+
+                # Standardize to exact case
+                if job_type_str.upper() == 'DIRECTIONAL':
+                    return 'Directional'
+                if job_type_str.upper() == 'RENTAL':
+                    return 'Rental'
+
                 return job_type_str
+
+            # POG files: If blank, set to "Rental"
+            if source in ['POG_CAM_Usage', 'POG_MM_Usage']:
+                return 'Rental'
 
             return job_type
 
         df['JOB_TYPE'] = df.apply(clean_job_type, axis=1)
-        print(f"  Populated JOB_TYPE for Motor KPI and cleaned values")
+        print(f"  Populated and standardized JOB_TYPE (Motor KPI=Directional, CAM=Rental, POG blanks=Rental)")
 
     return df
 
@@ -832,7 +856,53 @@ def populate_motor_model(df):
     return df
 
 # ============================================================================
-# STEP 15: Convert Numeric Columns to Text
+# STEP 15: Populate BHA and RUN_NUM
+# ============================================================================
+
+def populate_bha_and_run_num(df):
+    """
+    Populate BHA and RUN_NUM columns with default values where blank:
+    - POG files: If blank, set BHA and RUN_NUM to 1
+    - Motor KPI & CAM Run Tracker: If blank, set BHA and RUN_NUM to 1
+    - Keep existing values if present
+    """
+
+    # Handle BHA column
+    if 'BHA' in df.columns:
+        def populate_bha(row):
+            source = row['SOURCE']
+            bha = row.get('BHA', None)
+
+            # If blank or NaN, set to 1
+            if pd.isna(bha) or bha == '':
+                return 1
+
+            # Keep existing value
+            return bha
+
+        df['BHA'] = df.apply(populate_bha, axis=1)
+        print(f"  Populated BHA column (blanks set to 1)")
+
+    # Handle RUN_NUM column
+    if 'RUN_NUM' in df.columns:
+        def populate_run_num(row):
+            source = row['SOURCE']
+            run_num = row.get('RUN_NUM', None)
+
+            # If blank or NaN, set to 1
+            if pd.isna(run_num) or run_num == '':
+                return 1
+
+            # Keep existing value
+            return run_num
+
+        df['RUN_NUM'] = df.apply(populate_run_num, axis=1)
+        print(f"  Populated RUN_NUM column (blanks set to 1)")
+
+    return df
+
+# ============================================================================
+# STEP 16: Convert Numeric Columns to Text
 # ============================================================================
 
 def convert_to_text_format(df):
@@ -997,11 +1067,15 @@ def merge_all_files(FILES):
     print("\nPopulating MOTOR_MODEL...")
     df_merged = populate_motor_model(df_merged)
 
-    # Step 15: Convert numeric columns to text format
+    # Step 15: Populate BHA and RUN_NUM
+    print("\nPopulating BHA and RUN_NUM...")
+    df_merged = populate_bha_and_run_num(df_merged)
+
+    # Step 16: Convert numeric columns to text format
     print("\nConverting numeric columns to text format...")
     df_merged = convert_to_text_format(df_merged)
 
-    # Step 16: Export to Excel
+    # Step 17: Export to Excel
     print("\n" + "="*80)
     print("EXPORTING RESULTS")
     print("="*80)
