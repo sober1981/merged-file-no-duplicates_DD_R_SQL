@@ -12,10 +12,14 @@ Data Corrections Applied:
 2. DDS: Motor KPI=SDT, POG=Other, CAM=Keep as is
 3. BHA: Blanks set to 1 (all sources)
 4. RUN_NUM: Blanks set to 1 (all sources)
+5. MY (CAM Run Tracker only):
+   - Primary source: "Yield >45 Deg" (Column AP)
+   - Fallback: "Yield 0-45 Deg" (Column AO) if AP blank
+   - Text parsing: "18s" → 18.0, "11s to 15s" → 13.0 (average)
 
 Author: Created for drilling optimization project
-Date: 2025-10-29
-Version: 2.2 (Auto-detect + Data Corrections)
+Date: 2025-10-30
+Version: 2.3 (Auto-detect + Data Corrections + MY Column Enhancement)
 """
 
 import pandas as pd
@@ -264,6 +268,27 @@ def read_cam_run_tracker(file_path, mapping):
             df_renamed['BEND'] = df['Bend']
         if 'BEND_HSG' not in df_renamed.columns or df_renamed['BEND_HSG'].isna().all():
             df_renamed['BEND_HSG'] = df['Bend']
+
+    # Special handling: Populate MY column with fallback logic
+    # Primary: Column AP ("Yield >45 Deg")
+    # Fallback: Column AO ("Yield 0-45 Deg") if AP is blank
+    if 'Yield >45 Deg' in df.columns and 'Yield 0-45 Deg' in df.columns:
+        def get_my_value(row_orig):
+            # Try primary source first (AP - "Yield >45 Deg")
+            yield_high = row_orig.get('Yield >45 Deg')
+            if pd.notna(yield_high) and str(yield_high).strip() != '':
+                return yield_high
+
+            # Fallback to secondary source (AO - "Yield 0-45 Deg")
+            yield_low = row_orig.get('Yield 0-45 Deg')
+            if pd.notna(yield_low) and str(yield_low).strip() != '':
+                return yield_low
+
+            return None
+
+        # Apply the logic to populate MY column
+        df_renamed['MY'] = df.apply(get_my_value, axis=1)
+        print(f"  Populated MY column from 'Yield >45 Deg' (primary) and 'Yield 0-45 Deg' (fallback)")
 
     return df_renamed
 
@@ -856,7 +881,74 @@ def populate_motor_model(df):
     return df
 
 # ============================================================================
-# STEP 15: Populate BHA and RUN_NUM
+# STEP 15: Parse MY Column Text for CAM Run Tracker
+# ============================================================================
+
+def parse_my_column_text(df):
+    """
+    Parse MY column text patterns for CAM Run Tracker rows only.
+
+    Patterns handled:
+    - "18s" or "18S" → 18.0
+    - "11s to 15s" → 13.0 (average of 11 and 15)
+    - Case-insensitive
+    - Unknown patterns → Leave as is
+
+    Result must be numeric in merged file.
+    """
+    import re
+
+    if 'MY' not in df.columns:
+        return df
+
+    print("\nParsing MY column text for CAM Run Tracker rows...")
+
+    def parse_my_value(row):
+        # Only process CAM Run Tracker rows
+        if row['SOURCE'] != 'CAM_Run_Tracker':
+            return row['MY']
+
+        my_value = row['MY']
+
+        # If already numeric or empty, return as is
+        if pd.isna(my_value):
+            return my_value
+
+        # Convert to string for processing
+        my_str = str(my_value).strip()
+
+        # If it's already a number, return it
+        try:
+            return float(my_str)
+        except ValueError:
+            pass
+
+        # Pattern 1: Single number with 's' or 'S' (e.g., "18s", "18S")
+        # Match: number followed by optional 's' or 'S'
+        pattern1 = r'^(\d+(?:\.\d+)?)[sS]?$'
+        match1 = re.match(pattern1, my_str, re.IGNORECASE)
+        if match1:
+            return float(match1.group(1))
+
+        # Pattern 2: Range with "to" (e.g., "11s to 15s", "11 to 15")
+        # Match: number (optional s) + "to" + number (optional s)
+        pattern2 = r'^(\d+(?:\.\d+)?)[sS]?\s+to\s+(\d+(?:\.\d+)?)[sS]?$'
+        match2 = re.match(pattern2, my_str, re.IGNORECASE)
+        if match2:
+            num1 = float(match2.group(1))
+            num2 = float(match2.group(2))
+            return (num1 + num2) / 2.0
+
+        # If no pattern matched, return original value (leave as is)
+        return my_value
+
+    df['MY'] = df.apply(parse_my_value, axis=1)
+    print(f"  Parsed MY column text patterns for CAM Run Tracker rows")
+
+    return df
+
+# ============================================================================
+# STEP 16: Populate BHA and RUN_NUM
 # ============================================================================
 
 def populate_bha_and_run_num(df):
@@ -1020,6 +1112,8 @@ def merge_all_files(FILES):
     print("MERGING DATA")
     print("="*80)
 
+    # NOTE: sort=False preserves the original row order from each source file
+    # This ensures CAM Run Tracker rows maintain their original order
     df_merged = pd.concat(dfs, ignore_index=True, sort=False)
     print(f"\nTotal rows after merge: {len(df_merged)}")
     print(f"Total columns: {len(df_merged.columns)}")
@@ -1067,15 +1161,18 @@ def merge_all_files(FILES):
     print("\nPopulating MOTOR_MODEL...")
     df_merged = populate_motor_model(df_merged)
 
-    # Step 15: Populate BHA and RUN_NUM
+    # Step 15: Parse MY column text for CAM Run Tracker
+    df_merged = parse_my_column_text(df_merged)
+
+    # Step 16: Populate BHA and RUN_NUM
     print("\nPopulating BHA and RUN_NUM...")
     df_merged = populate_bha_and_run_num(df_merged)
 
-    # Step 16: Convert numeric columns to text format
+    # Step 17: Convert numeric columns to text format
     print("\nConverting numeric columns to text format...")
     df_merged = convert_to_text_format(df_merged)
 
-    # Step 17: Export to Excel
+    # Step 18: Export to Excel
     print("\n" + "="*80)
     print("EXPORTING RESULTS")
     print("="*80)
