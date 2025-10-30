@@ -291,6 +291,13 @@ def read_cam_run_tracker(file_path, mapping):
         from_low = (~high_populated & low_populated & df['MY'].notna()).sum()
 
         print(f"  Populated MY column: {total_my} total values ({from_high} from primary, {from_low} from fallback)")
+
+        # Remove any mapping entries that would create duplicate MY column
+        # Since we already created MY with fallback logic, prevent mapping from creating it again
+        keys_to_remove = [k for k, v in mapping.items() if v == 'MY']
+        for key in keys_to_remove:
+            print(f"  Removing mapping '{key}' -> 'MY' to prevent duplicate column")
+            del mapping[key]
     else:
         print(f"  WARNING: Could not find both Yield columns (High={yield_high_col}, Low={yield_low_col})")
 
