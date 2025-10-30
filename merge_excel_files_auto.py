@@ -242,6 +242,13 @@ def read_cam_run_tracker(file_path, mapping):
     df = pd.read_excel(file_path, sheet_name='General')
     print(f"  Rows: {len(df)}, Columns: {len(df.columns)}")
 
+    # DEBUG: Print column names to check for Yield columns
+    yield_cols = [col for col in df.columns if 'yield' in str(col).lower()]
+    if yield_cols:
+        print(f"  DEBUG: Found Yield columns: {yield_cols}")
+    else:
+        print(f"  DEBUG: No Yield columns found in file")
+
     # BEFORE renaming: Populate MY column with fallback logic
     # Primary: Column AP ("Yield >45 Deg")
     # Fallback: Column AO ("Yield 0-45 Deg") if AP is blank
@@ -262,7 +269,15 @@ def read_cam_run_tracker(file_path, mapping):
 
         # Create MY column in original df before renaming
         df['MY'] = df.apply(get_my_value, axis=1)
-        print(f"  Populated MY column from 'Yield >45 Deg' (primary) and 'Yield 0-45 Deg' (fallback)")
+
+        # Count how many values came from each source for debugging
+        total_my = df['MY'].notna().sum()
+        high_populated = df['Yield >45 Deg'].notna() & (df['Yield >45 Deg'].astype(str).str.strip() != '')
+        low_populated = df['Yield 0-45 Deg'].notna() & (df['Yield 0-45 Deg'].astype(str).str.strip() != '')
+        from_high = (high_populated & df['MY'].notna()).sum()
+        from_low = (~high_populated & low_populated & df['MY'].notna()).sum()
+
+        print(f"  Populated MY column: {total_my} total values ({from_high} from AP primary, {from_low} from AO fallback)")
 
     # Rename columns according to mapping
     df_renamed = df.rename(columns=mapping)
