@@ -250,18 +250,31 @@ def read_cam_run_tracker(file_path, mapping):
         print(f"  DEBUG: No Yield columns found in file")
 
     # BEFORE renaming: Populate MY column with fallback logic
-    # Primary: Column AP ("Yield >45 Deg")
-    # Fallback: Column AO ("Yield 0-45 Deg") if AP is blank
+    # Primary: Column with "Yield" and ">45" (handles case variations and spaces)
+    # Fallback: Column with "Yield" and "0-45" if primary is blank
     # Must do this BEFORE column renaming to access original column names
-    if 'Yield >45 Deg' in df.columns and 'Yield 0-45 Deg' in df.columns:
+
+    # Find columns by pattern (case-insensitive, handles extra spaces)
+    yield_high_col = None
+    yield_low_col = None
+    for col in df.columns:
+        col_clean = str(col).strip().lower()
+        if 'yield' in col_clean and '>45' in col_clean:
+            yield_high_col = col  # Store original column name
+        elif 'yield' in col_clean and '0-45' in col_clean:
+            yield_low_col = col  # Store original column name
+
+    if yield_high_col and yield_low_col:
+        print(f"  Found: Primary='{yield_high_col}', Fallback='{yield_low_col}'")
+
         def get_my_value(row_orig):
-            # Try primary source first (AP - "Yield >45 Deg")
-            yield_high = row_orig.get('Yield >45 Deg')
+            # Try primary source first (Yield >45)
+            yield_high = row_orig.get(yield_high_col)
             if pd.notna(yield_high) and str(yield_high).strip() != '':
                 return yield_high
 
-            # Fallback to secondary source (AO - "Yield 0-45 Deg")
-            yield_low = row_orig.get('Yield 0-45 Deg')
+            # Fallback to secondary source (Yield 0-45)
+            yield_low = row_orig.get(yield_low_col)
             if pd.notna(yield_low) and str(yield_low).strip() != '':
                 return yield_low
 
@@ -272,12 +285,14 @@ def read_cam_run_tracker(file_path, mapping):
 
         # Count how many values came from each source for debugging
         total_my = df['MY'].notna().sum()
-        high_populated = df['Yield >45 Deg'].notna() & (df['Yield >45 Deg'].astype(str).str.strip() != '')
-        low_populated = df['Yield 0-45 Deg'].notna() & (df['Yield 0-45 Deg'].astype(str).str.strip() != '')
+        high_populated = df[yield_high_col].notna() & (df[yield_high_col].astype(str).str.strip() != '')
+        low_populated = df[yield_low_col].notna() & (df[yield_low_col].astype(str).str.strip() != '')
         from_high = (high_populated & df['MY'].notna()).sum()
         from_low = (~high_populated & low_populated & df['MY'].notna()).sum()
 
-        print(f"  Populated MY column: {total_my} total values ({from_high} from AP primary, {from_low} from AO fallback)")
+        print(f"  Populated MY column: {total_my} total values ({from_high} from primary, {from_low} from fallback)")
+    else:
+        print(f"  WARNING: Could not find both Yield columns (High={yield_high_col}, Low={yield_low_col})")
 
     # Rename columns according to mapping
     df_renamed = df.rename(columns=mapping)
